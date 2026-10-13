@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Daily power log</title>
+<style>
+  :root {
+    --paper: #eef1ee;
+    --card: #ffffff;
+    --ink: #17302b;
+    --muted: #5d716c;
+    --line: #cfd9d5;
+    --accent: #0f6b5c;
+    --accent-ink: #ffffff;
+    --warn: #a63a2b;
+    --dial: #e9b43a;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper: #0f1a18;
+      --card: #172623;
+      --ink: #e3ede9;
+      --muted: #8fa59f;
+      --line: #2a3d39;
+      --accent: #4cc2aa;
+      --accent-ink: #0b1513;
+      --warn: #ef8a78;
+      --dial: #e9b43a;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font: 16px/1.5 "Trebuchet MS", "Segoe UI", system-ui, sans-serif;
+    padding: 24px 16px 64px;
+  }
+  main { max-width: 760px; margin: 0 auto; }
+  h1 { font-size: 1.9rem; margin: 0 0 4px; letter-spacing: -0.01em; }
+  .sub { color: var(--muted); margin: 0 0 24px; }
+  .num { font-variant-numeric: tabular-nums; font-family: "Courier New", ui-monospace, monospace; }
+
+  .meter {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 20px;
+  }
+  .reading {
+    background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px;
+  }
+  .reading b { display: block; font-size: 1.6rem; line-height: 1.2; }
+  .reading span { color: var(--muted); font-size: 0.85rem; }
+  .reading.main { border-left: 6px solid var(--dial); }
+
+  form {
+    background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+    padding: 16px; display: grid; gap: 14px; grid-template-columns: 1fr 1fr; margin-bottom: 24px;
+  }
+  label { display: grid; gap: 4px; font-size: 0.9rem; color: var(--muted); }
+  input {
+    font: inherit; color: var(--ink); background: var(--paper);
+    border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; width: 100%;
+  }
+  input:focus-visible, button:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  .full { grid-column: 1 / -1; }
+  .dayname { font-size: 1.05rem; color: var(--ink); padding: 10px 0; min-height: 44px; }
+  button {
+    font: inherit; cursor: pointer; border-radius: 6px; padding: 10px 16px;
+    border: 1px solid var(--line); background: var(--card); color: var(--ink);
+  }
+  button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; }
+  button.danger { color: var(--warn); padding: 4px 10px; }
+  .msg { min-height: 1.4em; font-size: 0.9rem; color: var(--warn); }
+  .msg.ok { color: var(--accent); }
+
+  .tablewrap { overflow-x: auto; background: var(--card); border: 1px solid var(--line); border-radius: 10px; }
+  table { width: 100%; border-collapse: collapse; min-width: 680px; }
+  th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line); }
+  th { font-size: 0.85rem; color: var(--muted); font-weight: 600; }
+  tr:last-child td { border-bottom: 0; }
+  td.units { font-weight: 700; }
+  .empty { padding: 28px 16px; color: var(--muted); text-align: center; }
+
+  .tools { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+  .note { color: var(--muted); font-size: 0.85rem; margin-top: 12px; }
+
+  @media (max-width: 520px) {
+    form { grid-template-columns: 1fr; }
+    .meter { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <h1>Daily power log</h1>
+  <p class="sub">Enter your electricity units once a day. Entries save automatically in this browser.</p>
+
+  <section class="meter" aria-label="Summary">
+    <div class="reading main"><b class="num" id="sLast">–</b><span>Latest entry (units)</span></div>
+    <div class="reading"><b class="num" id="sTotal">0</b><span>Total logged (units)</span></div>
+    <div class="reading"><b class="num" id="sAvg">–</b><span>Average per entry (units)</span></div>
+  </section>
+
+  <form id="form" autocomplete="off">
+    <label>Electricity units
+      <input id="units" type="number" inputmode="decimal" step="any" min="0" placeholder="e.g. 12.4" required>
+    </label>
+    <label>Date of the day
+      <input id="date" type="date" required>
+    </label>
+    <div class="full dayname" id="dayname" aria-live="polite"></div>
+    <label class="full">Date electricity was loaded into the meter (optional)
+      <input id="loaded" type="date">
+    </label>
+    <div class="full"><button class="primary" type="submit">Save entry</button></div>
+    <div class="full msg" id="msg" role="status"></div>
+  </form>
+
+  <div class="tablewrap">
+    <table>
+      <thead>
+        <tr><th>Day</th><th>Date</th><th>Units</th><th>Loaded into meter</th><th>Entered at</th><th></th></tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+    <div class="empty" id="empty">No entries yet. Add today's units above.</div>
+  </div>
+
+  <div class="tools">
+    <button id="exportCsv" type="button">Download CSV</button>
+    <button id="exportJson" type="button">Back up (JSON)</button>
+    <button id="importBtn" type="button">Restore backup</button>
+    <input id="importFile" type="file" accept="application/json" hidden>
+  </div>
+  <p class="note">Data lives in this browser on this device. Use Back up to move it to another device or keep a copy.</p>
+</main>
+
+<script>
+(function () {
+  var KEY = "daily-power-log-v1";
+  var entries = load();
+
+  var $ = function (id) { return document.getElementById(id); };
+  var form = $("form"), unitsEl = $("units"), dateEl = $("date"), loadedEl = $("loaded"), msg = $("msg");
+
+  function load() {
+    try {
+      var raw = localStorage.getItem(KEY);
+      var parsed = raw ? JSON.parse(raw) : [];
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (e) { return []; }
+  }
+  function save() {
+    try { localStorage.setItem(KEY, JSON.stringify(entries)); return true; }
+    catch (e) { say("Could not save in this browser. Check that storage is allowed.", false); return false; }
+  }
+  function say(text, ok) { msg.textContent = text; msg.className = "msg" + (ok ? " ok" : ""); }
+
+  function todayStr() {
+    var d = new Date();
+    return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+  }
+  function parseDate(s) { var p = s.split("-"); return new Date(+p[0], +p[1] - 1, +p[2]); }
+  function dayName(s) { return parseDate(s).toLocaleDateString(undefined, { weekday: "long" }); }
+  function prettyDate(s) { return parseDate(s).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" }); }
+  function prettyStamp(iso) {
+    return new Date(iso).toLocaleString(undefined, { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
+  }
+  function fmt(n) { return Number(n.toFixed(2)).toString(); }
+  function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
+
+  function updateDayName() { $("dayname").textContent = dateEl.value ? dayName(dateEl.value) : ""; }
+
+  function render() {
+    var sorted = entries.slice().sort(function (a, b) {
+      return b.date.localeCompare(a.date) || b.enteredAt.localeCompare(a.enteredAt);
+    });
+    $("rows").innerHTML = sorted.map(function (e) {
+      return "<tr><td>" + esc(dayName(e.date)) + "</td><td>" + esc(prettyDate(e.date)) +
+        '</td><td class="num units">' + esc(fmt(e.units)) + "</td><td>" + (e.loaded ? esc(prettyDate(e.loaded)) : "–") + "</td><td>" + esc(prettyStamp(e.enteredAt)) +
+        '</td><td><button class="danger" data-id="' + esc(e.id) + '" aria-label="Delete entry for ' + esc(prettyDate(e.date)) + '">Delete</button></td></tr>';
+    }).join("");
+    $("empty").style.display = sorted.length ? "none" : "block";
+
+    var total = entries.reduce(function (s, e) { return s + e.units; }, 0);
+    $("sTotal").textContent = fmt(total);
+    $("sLast").textContent = sorted.length ? fmt(sorted[0].units) : "–";
+    $("sAvg").textContent = entries.length ? fmt(total / entries.length) : "–";
+  }
+
+  form.addEventListener("submit", function (ev) {
+    ev.preventDefault();
+    var units = parseFloat(unitsEl.value);
+    if (isNaN(units) || units < 0) { say("Enter the units as a number, 0 or higher.", false); return; }
+    if (!dateEl.value) { say("Pick the date for this entry.", false); return; }
+    var dup = entries.some(function (e) { return e.date === dateEl.value; });
+    entries.push({
+      id: String(Date.now()) + Math.random().toString(36).slice(2, 6),
+      date: dateEl.value,
+      units: units,
+      loaded: loadedEl.value || "",
+      enteredAt: new Date().toISOString()
+    });
+    if (save()) {
+      say(dup ? "Saved. Note: you already had an entry for this date." : "Saved.", true);
+      unitsEl.value = ""; loadedEl.value = "";
+      render();
+      unitsEl.focus();
+    } else { entries.pop(); }
+  });
+
+  $("rows").addEventListener("click", function (ev) {
+    var id = ev.target && ev.target.getAttribute("data-id");
+    if (!id) return;
+    if (!confirm("Delete this entry?")) return;
+    entries = entries.filter(function (e) { return e.id !== id; });
+    save(); render(); say("Entry deleted.", true);
+  });
+
+  dateEl.addEventListener("input", updateDayName);
+
+  function download(name, text, type) {
+    var blob = new Blob([text], { type: type });
+    var a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
+  }
+
+  $("exportCsv").addEventListener("click", function () {
+    var rows = entries.slice().sort(function (a, b) { return a.date.localeCompare(b.date); });
+    var csv = "Day,Date,Units,Loaded into meter,Entered at\n" + rows.map(function (e) {
+      return [dayName(e.date), e.date, e.units, e.loaded || "", e.enteredAt].join(",");
+    }).join("\n");
+    download("power-log.csv", csv, "text/csv");
+  });
+  $("exportJson").addEventListener("click", function () {
+    download("power-log-backup.json", JSON.stringify(entries, null, 2), "application/json");
+  });
+  $("importBtn").addEventListener("click", function () { $("importFile").click(); });
+  $("importFile").addEventListener("change", function (ev) {
+    var file = ev.target.files[0];
+    if (!file) return;
+    var reader = new FileReader();
+    reader.onload = function () {
+      try {
+        var data = JSON.parse(reader.result);
+        if (!Array.isArray(data)) throw new Error("bad");
+        var valid = data.filter(function (e) {
+          return e && typeof e.date === "string" && typeof e.units === "number" && typeof e.enteredAt === "string" && e.id;
+        });
+        var have = {};
+        entries.forEach(function (e) { have[e.id] = true; });
+        var added = 0;
+        valid.forEach(function (e) { if (!have[e.id]) { entries.push(e); added++; } });
+        save(); render();
+        say("Restored " + added + " new entries.", true);
+      } catch (e) { say("That file is not a valid backup.", false); }
+      $("importFile").value = "";
+    };
+    reader.readAsText(file);
+  });
+
+  dateEl.value = todayStr();
+  updateDayName();
+  render();
+})();
+</script>
+</body>
+</html>
